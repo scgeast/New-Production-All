@@ -154,7 +154,7 @@ def main():
         "Working Days per Month",
         min_value=1,
         max_value=31,
-        value=22,
+        value=26,
         help="Number of working days used for average daily volume calculation"
     )
     
