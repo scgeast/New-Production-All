@@ -147,7 +147,14 @@ def main():
         value=80,
         help="Plants below this achievement percentage will be flagged"
     )
-    
+    # Working days assumption
+    working_days = st.sidebar.number_input(
+        "Average Working Days per Month",
+        min_value=1,
+        max_value=31,
+        value=22,
+        help="Number of working days used for Avg Vol.Day calculation"
+    )
     if uploaded_file is not None:
         try:
             # Load data
