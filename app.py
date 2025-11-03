@@ -1,4 +1,4 @@
-# streamlit_app.py - Dengan perbaikan Avg Vol.Day
+# streamlit_app.py - Dengan toggle untuk info area
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -28,6 +28,14 @@ st.markdown("""
         padding: 1rem;
         border-radius: 10px;
         border-left: 4px solid #1f77b4;
+    }
+    /* Style untuk info area */
+    .info-area {
+        background-color: #f8f9fa;
+        padding: 1rem;
+        border-radius: 8px;
+        border-left: 4px solid #1f77b4;
+        margin-bottom: 1rem;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -158,6 +166,14 @@ def main():
         help="Number of working days used for average daily volume calculation"
     )
     
+    # TOGGLE untuk Info Area
+    st.sidebar.subheader("ℹ️ Display Settings")
+    show_info_area = st.sidebar.checkbox(
+        "Show Data Information", 
+        value=True,
+        help="Toggle to show/hide data loading information"
+    )
+    
     # Initialize session state for months
     if 'available_months' not in st.session_state:
         st.session_state.available_months = []
@@ -208,14 +224,20 @@ def main():
             # Filter data berdasarkan bulan yang dipilih
             df_filtered = analyzer.filter_by_month(selected_months)
             
-            # Display success message dengan info filter
-            st.success(f"✅ Data loaded successfully! {len(df_filtered)} records found for {len(selected_months)} selected month(s).")
-            st.info(f"📊 **Calculation Settings:** {working_days} working days per month")
-            
-            # Tampilkan bulan yang aktif
-            if selected_months:
-                months_display = ", ".join(selected_months)
-                st.info(f"📅 **Currently viewing:** {months_display}")
+            # TOGGLE AREA INFO - Tampilkan hanya jika toggle aktif
+            if show_info_area:
+                st.markdown('<div class="info-area">', unsafe_allow_html=True)
+                st.success(f"✅ Data loaded successfully! {len(df_filtered)} records found for {len(selected_months)} selected month(s).")
+                st.info(f"📊 **Calculation Settings:** {working_days} working days per month")
+                
+                # Tampilkan bulan yang aktif
+                if selected_months:
+                    months_display = ", ".join(selected_months)
+                    st.info(f"📅 **Currently viewing:** {months_display}")
+                st.markdown('</div>', unsafe_allow_html=True)
+            else:
+                # Tampilkan minimal info saja
+                st.success("✅ Data loaded successfully!")
             
             # Summary metrics untuk data yang difilter
             st.header("📊 Executive Summary")
