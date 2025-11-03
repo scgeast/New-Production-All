@@ -1,4 +1,4 @@
-# streamlit_app.py - Dengan perbaikan Avg Vol.Day + Area Info Toggle
+dengan script ini :# streamlit_app.py - Dengan perbaikan Avg Vol.Day
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -28,20 +28,6 @@ st.markdown("""
         padding: 1rem;
         border-radius: 10px;
         border-left: 4px solid #1f77b4;
-    }
-    /* Style untuk expander area info */
-    .area-info-header {
-        font-size: 1.1rem;
-        font-weight: bold;
-        color: #1f77b4;
-        margin-bottom: 0.5rem;
-    }
-    .area-info-content {
-        background-color: #f8f9fa;
-        padding: 1rem;
-        border-radius: 8px;
-        border-left: 3px solid #1f77b4;
-        margin-bottom: 1rem;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -121,32 +107,6 @@ class ProductionAnalyzer:
         
         return area_perf
     
-    def get_area_details(self, df_filtered):
-        """Get detailed information for each area"""
-        area_details = df_filtered.groupby('Area').agg({
-            'Mtd Vol': ['sum', 'mean', 'std'],
-            'Ann Fm Target': 'sum',
-            'Achievement %': ['mean', 'min', 'max'],
-            'Plant Name': 'count',
-            'Avg Vol.Day Corrected': 'mean'
-        }).round(2)
-        
-        # Flatten column names
-        area_details.columns = ['_'.join(col).strip() for col in area_details.columns.values]
-        area_details = area_details.rename(columns={
-            'Plant Name_count': 'Plant_Count',
-            'Mtd Vol_sum': 'Total_Volume',
-            'Mtd Vol_mean': 'Avg_Volume_Per_Plant',
-            'Mtd Vol_std': 'Volume_Std_Dev',
-            'Ann Fm Target_sum': 'Total_Target',
-            'Achievement %_mean': 'Avg_Achievement',
-            'Achievement %_min': 'Min_Achievement',
-            'Achievement %_max': 'Max_Achievement',
-            'Avg Vol.Day Corrected_mean': 'Avg_Daily_Volume'
-        })
-        
-        return area_details
-    
     def get_top_performers(self, df_filtered, n=10):
         """Get top performing plants from filtered data"""
         return df_filtered.nlargest(n, 'Achievement %')[
@@ -197,21 +157,6 @@ def main():
         value=22,
         help="Number of working days used for average daily volume calculation"
     )
-    
-    # Initialize session state untuk toggle area info
-    if 'show_area_info' not in st.session_state:
-        st.session_state.show_area_info = False
-    
-    # Toggle untuk Area Info
-    st.sidebar.subheader("📊 Area Information")
-    show_area_info = st.sidebar.checkbox(
-        "Show Area Details", 
-        value=st.session_state.show_area_info,
-        help="Toggle to show/hide detailed area information"
-    )
-    
-    # Update session state
-    st.session_state.show_area_info = show_area_info
     
     # Initialize session state for months
     if 'available_months' not in st.session_state:
@@ -271,61 +216,6 @@ def main():
             if selected_months:
                 months_display = ", ".join(selected_months)
                 st.info(f"📅 **Currently viewing:** {months_display}")
-            
-            # AREA INFO TOGGLE - Tampilkan jika toggle aktif
-            if st.session_state.show_area_info:
-                st.markdown("---")
-                st.header("🏢 Area Information")
-                
-                area_details = analyzer.get_area_details(df_filtered)
-                if not area_details.empty:
-                    # Tampilkan metrics untuk setiap area
-                    areas = area_details.index.tolist()
-                    cols = st.columns(len(areas))
-                    
-                    for i, area in enumerate(areas):
-                        with cols[i]:
-                            st.markdown(f'<div class="area-info-header">{area}</div>', unsafe_allow_html=True)
-                            area_data = area_details.loc[area]
-                            
-                            st.metric(
-                                "Plants", 
-                                int(area_data['Plant_Count']),
-                                help=f"Number of plants in {area}"
-                            )
-                            st.metric(
-                                "Total Volume", 
-                                f"{area_data['Total_Volume']:,.0f}",
-                                help=f"Total production volume in {area}"
-                            )
-                            st.metric(
-                                "Achievement", 
-                                f"{area_data['Avg_Achievement']:.1f}%",
-                                help=f"Average achievement rate in {area}"
-                            )
-                            st.metric(
-                                "Daily Volume", 
-                                f"{area_data['Avg_Daily_Volume']:.1f}",
-                                help=f"Average daily volume in {area}"
-                            )
-                    
-                    # Detailed area table (bisa di-expand)
-                    with st.expander("📋 View Detailed Area Statistics"):
-                        st.dataframe(
-                            area_details.style.format({
-                                'Total_Volume': '{:,.0f}',
-                                'Total_Target': '{:,.0f}',
-                                'Avg_Volume_Per_Plant': '{:,.0f}',
-                                'Volume_Std_Dev': '{:,.0f}',
-                                'Avg_Achievement': '{:.1f}%',
-                                'Min_Achievement': '{:.1f}%',
-                                'Max_Achievement': '{:.1f}%',
-                                'Avg_Daily_Volume': '{:.1f}'
-                            }),
-                            use_container_width=True
-                        )
-                else:
-                    st.info("No area data available for selected filters")
             
             # Summary metrics untuk data yang difilter
             st.header("📊 Executive Summary")
@@ -572,7 +462,6 @@ def main():
             
             - **Accurate Daily Calculations**: Corrected average daily volume based on working days
             - **Monthly Filter**: Analyze data by specific months
-            - **Area Information Toggle**: Show/hide detailed area statistics
             - **Executive Summary**: Key metrics and overall performance
             - **Performance Overview**: Visual analysis by area and time period
             - **Plant Analysis**: Identification of top performers and plants needing attention
