@@ -1,10 +1,10 @@
-# streamlit_app.py - Dengan perbaikan Avg Vol.Day
+# streamlit_app.py - Modern Web Dashboard
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import numpy as np
+from datetime import datetime
 
 # Page configuration
 st.set_page_config(
@@ -14,20 +14,90 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS
+# Custom CSS untuk tampilan modern
 st.markdown("""
 <style>
+    /* Main styling */
     .main-header {
-        font-size: 2.5rem;
-        color: #1f77b4;
+        font-size: 2.8rem;
+        color: #2c3e50;
         text-align: center;
-        margin-bottom: 2rem;
+        margin-bottom: 1rem;
+        font-weight: 700;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
     }
+    
+    .sub-header {
+        font-size: 1.5rem;
+        color: #34495e;
+        margin: 1.5rem 0 1rem 0;
+        font-weight: 600;
+        border-left: 4px solid #3498db;
+        padding-left: 10px;
+    }
+    
+    /* Metric cards */
     .metric-card {
-        background-color: #f0f2f6;
-        padding: 1rem;
+        background: white;
+        padding: 1.5rem;
+        border-radius: 15px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        border-left: 5px solid #3498db;
+        margin: 0.5rem 0;
+        transition: transform 0.2s;
+    }
+    
+    .metric-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+    }
+    
+    .metric-value {
+        font-size: 2rem;
+        font-weight: 700;
+        color: #2c3e50;
+        margin: 0.5rem 0;
+    }
+    
+    .metric-label {
+        font-size: 0.9rem;
+        color: #7f8c8d;
+        font-weight: 500;
+    }
+    
+    /* Sidebar styling */
+    .sidebar-header {
+        font-size: 1.3rem;
+        color: #2c3e50;
+        font-weight: 600;
+        margin-bottom: 1rem;
+    }
+    
+    /* Status badges */
+    .status-excellent { background-color: #2ecc71; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; }
+    .status-good { background-color: #3498db; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; }
+    .status-warning { background-color: #f39c12; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; }
+    .status-critical { background-color: #e74c3c; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; }
+    
+    /* Data table styling */
+    .dataframe {
         border-radius: 10px;
-        border-left: 4px solid #1f77b4;
+        overflow: hidden;
+    }
+    
+    /* Progress bars */
+    .progress-container {
+        background: #ecf0f1;
+        border-radius: 10px;
+        margin: 5px 0;
+    }
+    
+    .progress-bar {
+        height: 8px;
+        border-radius: 10px;
+        background: linear-gradient(90deg, #2ecc71, #3498db);
     }
 </style>
 """, unsafe_allow_html=True)
@@ -39,34 +109,31 @@ class ProductionAnalyzer:
     
     def clean_data(self):
         """Clean and preprocess the data"""
-        # Make a copy
         df = self.df.copy()
         
-        # Convert numeric columns, handling errors
+        # Convert numeric columns
         numeric_columns = ['Ann Fm Target', 'Mtd Vol', 'Avg Vol.Day', 'Rmc Schedule']
         for col in numeric_columns:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
         
-        # PERBAIKAN: Hitung ulang Avg Vol.Day yang benar
-        # Asumsi: 22 hari kerja per bulan (bisa disesuaikan)
-        working_days_per_month = 22
-        df['Avg Vol.Day Corrected'] = (df['Mtd Vol'] / working_days_per_month).round(1)
-        
         # Calculate performance metrics
         df['Achievement %'] = (df['Mtd Vol'] / df['Ann Fm Target'] * 100).round(2)
         df['Schedule Achievement %'] = (df['Mtd Vol'] / df['Rmc Schedule'] * 100).round(2)
         
-        # Handle infinite values (ketika target = 0)
+        # Handle infinite values
         df['Achievement %'] = df['Achievement %'].replace([np.inf, -np.inf], 0)
         df['Schedule Achievement %'] = df['Schedule Achievement %'].replace([np.inf, -np.inf], 0)
         
         # Categorize performance
-        df['Performance Category'] = pd.cut(
-            df['Achievement %'],
-            bins=[0, 80, 100, float('inf')],
-            labels=['Needs Attention', 'On Track', 'Exceeding Target']
-        )
+        conditions = [
+            df['Achievement %'] >= 100,
+            (df['Achievement %'] >= 80) & (df['Achievement %'] < 100),
+            (df['Achievement %'] >= 60) & (df['Achievement %'] < 80),
+            df['Achievement %'] < 60
+        ]
+        choices = ['Excellent', 'Good', 'Warning', 'Critical']
+        df['Performance Status'] = np.select(conditions, choices, default='Unknown')
         
         self.df_clean = df
     
@@ -77,11 +144,14 @@ class ProductionAnalyzer:
         else:
             return self.df_clean[self.df_clean['Periode'].isin(selected_months)]
     
-    def get_summary_metrics(self, df_filtered):
-        """Get overall summary metrics for filtered data"""
+    def get_summary_metrics(self, df_filtered, working_days):
+        """Get overall summary metrics"""
         total_volume = df_filtered['Mtd Vol'].sum()
         total_target = df_filtered['Ann Fm Target'].sum()
         overall_achievement = (total_volume / total_target * 100) if total_target > 0 else 0
+        
+        # Calculate corrected daily average
+        df_filtered['Avg Vol.Day Corrected'] = (df_filtered['Mtd Vol'] / working_days).round(1)
         
         return {
             'total_plants': df_filtered['Plant Name'].nunique(),
@@ -90,11 +160,16 @@ class ProductionAnalyzer:
             'total_volume': total_volume,
             'total_target': total_target,
             'overall_achievement': overall_achievement,
-            'avg_daily_volume': df_filtered['Avg Vol.Day Corrected'].mean()
+            'avg_daily_volume': df_filtered['Avg Vol.Day Corrected'].mean(),
+            'performance_score': df_filtered['Achievement %'].mean()
         }
     
+    def get_performance_distribution(self, df_filtered):
+        """Get performance distribution"""
+        return df_filtered['Performance Status'].value_counts()
+    
     def get_area_performance(self, df_filtered):
-        """Get performance by area for filtered data"""
+        """Get performance by area"""
         area_perf = df_filtered.groupby('Area').agg({
             'Mtd Vol': 'sum',
             'Ann Fm Target': 'sum',
@@ -108,368 +183,348 @@ class ProductionAnalyzer:
         return area_perf
     
     def get_top_performers(self, df_filtered, n=10):
-        """Get top performing plants from filtered data"""
+        """Get top performing plants"""
         return df_filtered.nlargest(n, 'Achievement %')[
-            ['Plant Name', 'Area', 'Periode', 'Mtd Vol', 'Ann Fm Target', 'Achievement %', 'Performance Category', 'Avg Vol.Day Corrected']
+            ['Plant Name', 'Area', 'Periode', 'Mtd Vol', 'Ann Fm Target', 'Achievement %', 'Performance Status']
         ]
     
     def get_underperformers(self, df_filtered, threshold=80):
-        """Get underperforming plants from filtered data"""
+        """Get underperforming plants"""
         underperformers = df_filtered[df_filtered['Achievement %'] < threshold]
         return underperformers.nsmallest(10, 'Achievement %')[
-            ['Plant Name', 'Area', 'Periode', 'Mtd Vol', 'Ann Fm Target', 'Achievement %', 'Performance Category', 'Avg Vol.Day Corrected']
+            ['Plant Name', 'Area', 'Periode', 'Mtd Vol', 'Ann Fm Target', 'Achievement %', 'Performance Status']
         ]
+
+def create_metric_card(label, value, delta=None, delta_type="normal"):
+    """Create a beautiful metric card"""
+    delta_color = {
+        "normal": "",
+        "inverse": "color: #e74c3c" if delta and float(delta.strip('%')) < 0 else "color: #2ecc71"
+    }
     
-    def get_monthly_trends(self, df_filtered):
-        """Get monthly production trends for filtered data"""
-        monthly = df_filtered.groupby('Periode').agg({
-            'Mtd Vol': 'sum',
-            'Ann Fm Target': 'sum',
-            'Plant Name': 'count',
-            'Avg Vol.Day Corrected': 'mean'
-        }).round(2)
-        
-        monthly['Achievement %'] = (monthly['Mtd Vol'] / monthly['Ann Fm Target'] * 100).round(2)
-        monthly = monthly.rename(columns={'Plant Name': 'Plant Count'})
-        
-        return monthly
+    return f"""
+    <div class="metric-card">
+        <div class="metric-label">{label}</div>
+        <div class="metric-value">{value}</div>
+        <div style="{delta_color.get(delta_type, '')}">{delta if delta else ''}</div>
+    </div>
+    """
 
 def main():
-    st.markdown('<div class="main-header">🏭 Production Performance Dashboard 2025</div>', 
-                unsafe_allow_html=True)
+    # Header Section
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.markdown('<div class="main-header">🏭 Production Performance Dashboard</div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="text-align: center; color: #7f8c8d; margin-bottom: 2rem;">Last Updated: {datetime.now().strftime("%Y-%m-%d %H:%M")}</div>', unsafe_allow_html=True)
     
     # Sidebar
-    st.sidebar.title("Configuration")
-    
-    # File upload
-    uploaded_file = st.sidebar.file_uploader(
-        "Upload Production Excel File", 
-        type=['xlsx'],
-        help="Upload your PRODUCTION ALL AREA 2025.xlsx file"
-    )
-    
-    # Working days setting
-    st.sidebar.subheader("⚙️ Calculation Settings")
-    working_days = st.sidebar.number_input(
-        "Working Days per Month",
-        min_value=1,
-        max_value=31,
-        value=22,
-        help="Number of working days used for average daily volume calculation"
-    )
-    
-    # Initialize session state for months
-    if 'available_months' not in st.session_state:
-        st.session_state.available_months = []
-    
-    if uploaded_file is not None:
-        try:
-            # Load data
-            df = pd.read_excel(uploaded_file, sheet_name='RAWD')
-            
-            # Apply working days setting
-            df_temp = df.copy()
-            numeric_columns = ['Ann Fm Target', 'Mtd Vol', 'Avg Vol.Day', 'Rmc Schedule']
-            for col in numeric_columns:
-                if col in df_temp.columns:
-                    df_temp[col] = pd.to_numeric(df_temp[col], errors='coerce')
-            
-            # Calculate corrected average with user-defined working days
-            df_temp['Avg Vol.Day Corrected'] = (df_temp['Mtd Vol'] / working_days).round(1)
-            
-            analyzer = ProductionAnalyzer(df)
-            
-            # Get available months from data
-            available_months = sorted(analyzer.df_clean['Periode'].unique())
-            st.session_state.available_months = available_months
-            
-            # Month filter - di sidebar
-            st.sidebar.subheader("📅 Filter Bulan")
-            selected_months = st.sidebar.multiselect(
-                "Pilih Bulan untuk Ditampilkan:",
-                options=['All'] + available_months,
-                default=['All'],
-                help="Pilih satu atau beberapa bulan untuk dianalisis"
-            )
-            
-            # Handle 'All' selection
-            if 'All' in selected_months:
-                selected_months = available_months
-            
-            # Performance threshold
-            performance_threshold = st.sidebar.slider(
-                "Underperformance Threshold (%)",
-                min_value=50,
-                max_value=90,
-                value=80,
-                help="Plants below this achievement percentage will be flagged"
-            )
-            
-            # Filter data berdasarkan bulan yang dipilih
-            df_filtered = analyzer.filter_by_month(selected_months)
-            
-            # Display success message dengan info filter
-            st.success(f"✅ Data loaded successfully! {len(df_filtered)} records found for {len(selected_months)} selected month(s).")
-            st.info(f"📊 **Calculation Settings:** {working_days} working days per month")
-            
-            # Tampilkan bulan yang aktif
-            if selected_months:
-                months_display = ", ".join(selected_months)
-                st.info(f"📅 **Currently viewing:** {months_display}")
-            
-            # Summary metrics untuk data yang difilter
-            st.header("📊 Executive Summary")
-            metrics = analyzer.get_summary_metrics(df_filtered)
-            
-            col1, col2, col3, col4 = st.columns(4)
-            
-            with col1:
-                st.metric("Total Plants", metrics['total_plants'])
-            with col2:
-                st.metric("Total Areas", metrics['total_areas'])
-            with col3:
-                st.metric("Total Volume", f"{metrics['total_volume']:,.0f}")
-            with col4:
-                achievement_color = "normal" if metrics['overall_achievement'] >= 100 else "off"
-                st.metric(
-                    "Overall Achievement", 
-                    f"{metrics['overall_achievement']:.1f}%",
-                    delta=f"{metrics['overall_achievement'] - 100:.1f}%" if metrics['overall_achievement'] != 100 else None,
-                    delta_color=achievement_color
-                )
-            
-            # Daily Performance
-            st.header("📈 Daily Performance Metrics")
-            
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                avg_daily_volume = df_filtered['Avg Vol.Day Corrected'].mean()
-                st.metric("Average Daily Volume", f"{avg_daily_volume:,.1f}")
-            
-            with col2:
-                total_daily_capacity = df_filtered['Avg Vol.Day Corrected'].sum()
-                st.metric("Total Daily Capacity", f"{total_daily_capacity:,.1f}")
-            
-            with col3:
-                daily_efficiency = (df_filtered['Mtd Vol'].sum() / (df_filtered['Avg Vol.Day Corrected'].sum() * working_days) * 100) if df_filtered['Avg Vol.Day Corrected'].sum() > 0 else 0
-                st.metric("Daily Efficiency", f"{daily_efficiency:.1f}%")
-            
-            # Performance Overview
-            st.header("🎯 Performance Overview")
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                # Area performance chart untuk data filtered
-                area_perf = analyzer.get_area_performance(df_filtered)
-                if not area_perf.empty:
-                    fig_area = px.bar(
-                        area_perf.reset_index(),
-                        x='Area',
-                        y='Achievement %',
-                        title='Achievement Rate by Area',
-                        color='Achievement %',
-                        color_continuous_scale='RdYlGn'
-                    )
-                    fig_area.update_layout(height=400)
-                    st.plotly_chart(fig_area, use_container_width=True)
-                else:
-                    st.info("No data available for selected filters")
-            
-            with col2:
-                # Daily volume by area
-                daily_by_area = df_filtered.groupby('Area')['Avg Vol.Day Corrected'].mean().reset_index()
-                if not daily_by_area.empty:
-                    fig_daily = px.bar(
-                        daily_by_area,
-                        x='Area',
-                        y='Avg Vol.Day Corrected',
-                        title='Average Daily Volume by Area',
-                        color='Avg Vol.Day Corrected',
-                        color_continuous_scale='Blues'
-                    )
-                    fig_daily.update_layout(height=400)
-                    st.plotly_chart(fig_daily, use_container_width=True)
-                else:
-                    st.info("No daily volume data available")
-            
-            # Plant Performance Analysis
-            st.header("🏭 Plant Performance Analysis")
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.subheader("🏆 Top Performers")
-                top_performers = analyzer.get_top_performers(df_filtered, 10)
-                if not top_performers.empty:
-                    st.dataframe(
-                        top_performers.style.format({
-                            'Mtd Vol': '{:,.0f}',
-                            'Ann Fm Target': '{:,.0f}',
-                            'Achievement %': '{:.1f}%',
-                            'Avg Vol.Day Corrected': '{:.1f}'
-                        }),
-                        use_container_width=True
-                    )
-                else:
-                    st.info("No top performers data for selected filters")
-            
-            with col2:
-                st.subheader("⚠️ Plants Needing Attention")
-                underperformers = analyzer.get_underperformers(df_filtered, performance_threshold)
-                if not underperformers.empty:
-                    st.dataframe(
-                        underperformers.style.format({
-                            'Mtd Vol': '{:,.0f}',
-                            'Ann Fm Target': '{:,.0f}',
-                            'Achievement %': '{:.1f}%',
-                            'Avg Vol.Day Corrected': '{:.1f}'
-                        }),
-                        use_container_width=True
-                    )
-                else:
-                    st.info(f"No plants below {performance_threshold}% achievement rate for selected filters")
-            
-            # Detailed Analysis
-            st.header("🔍 Detailed Analysis")
-            
-            tab1, tab2, tab3, tab4 = st.tabs(["Area Performance", "Monthly Trends", "Daily Performance", "Raw Data"])
-            
-            with tab1:
-                st.subheader("Area Performance Details")
-                area_perf_detailed = analyzer.get_area_performance(df_filtered)
-                if not area_perf_detailed.empty:
-                    st.dataframe(
-                        area_perf_detailed.style.format({
-                            'Mtd Vol': '{:,.0f}',
-                            'Ann Fm Target': '{:,.0f}',
-                            'Achievement %': '{:.1f}%'
-                        }),
-                        use_container_width=True
-                    )
-                else:
-                    st.info("No area performance data for selected filters")
-            
-            with tab2:
-                st.subheader("Monthly Trends Details")
-                monthly_detailed = analyzer.get_monthly_trends(df_filtered)
-                if not monthly_detailed.empty:
-                    st.dataframe(
-                        monthly_detailed.style.format({
-                            'Mtd Vol': '{:,.0f}',
-                            'Ann Fm Target': '{:,.0f}',
-                            'Achievement %': '{:.1f}%',
-                            'Avg Vol.Day Corrected': '{:.1f}'
-                        }),
-                        use_container_width=True
-                    )
-                else:
-                    st.info("No monthly trends data for selected filters")
-            
-            with tab3:
-                st.subheader("Daily Performance Analysis")
-                daily_analysis = df_filtered[['Plant Name', 'Area', 'Periode', 'Mtd Vol', 'Avg Vol.Day Corrected', 'Achievement %']].sort_values('Avg Vol.Day Corrected', ascending=False)
-                if not daily_analysis.empty:
-                    st.dataframe(
-                        daily_analysis.style.format({
-                            'Mtd Vol': '{:,.0f}',
-                            'Avg Vol.Day Corrected': '{:.1f}',
-                            'Achievement %': '{:.1f}%'
-                        }),
-                        use_container_width=True
-                    )
-                    
-                    # Daily volume distribution
-                    fig_daily_dist = px.histogram(
-                        df_filtered,
-                        x='Avg Vol.Day Corrected',
-                        title='Distribution of Daily Volumes',
-                        nbins=20,
-                        color_discrete_sequence=['#3498db']
-                    )
-                    fig_daily_dist.update_layout(height=400)
-                    st.plotly_chart(fig_daily_dist, use_container_width=True)
-                else:
-                    st.info("No daily performance data for selected filters")
-            
-            with tab4:
-                st.subheader("Raw Production Data")
-                if not df_filtered.empty:
-                    # Tampilkan kolom yang relevan saja untuk menghindari overload
-                    display_columns = ['Periode', 'Area', 'Plant Name', 'Ann Fm Target', 'Mtd Vol', 
-                                     'Avg Vol.Day Corrected', 'Rmc Schedule', 'Achievement %', 
-                                     'Schedule Achievement %', 'Performance Category']
-                    
-                    available_columns = [col for col in display_columns if col in df_filtered.columns]
-                    
-                    st.dataframe(
-                        df_filtered[available_columns].style.format({
-                            'Ann Fm Target': '{:,.0f}',
-                            'Mtd Vol': '{:,.0f}',
-                            'Avg Vol.Day Corrected': '{:.1f}',
-                            'Rmc Schedule': '{:,.0f}',
-                            'Achievement %': '{:.1f}%',
-                            'Schedule Achievement %': '{:.1f}%'
-                        }),
-                        use_container_width=True
-                    )
-                else:
-                    st.info("No raw data available for selected filters")
-            
-            # Export section
-            st.header("📥 Export Results")
-            
-            if not df_filtered.empty:
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    # Download processed data
-                    csv = df_filtered.to_csv(index=False)
-                    st.download_button(
-                        label="Download Processed Data as CSV",
-                        data=csv,
-                        file_name="production_analysis.csv",
-                        mime="text/csv",
-                        use_container_width=True
-                    )
-                
-                with col2:
-                    # Download performance summary
-                    summary_df = analyzer.get_area_performance(df_filtered).reset_index()
-                    summary_csv = summary_df.to_csv(index=False)
-                    st.download_button(
-                        label="Download Performance Summary",
-                        data=summary_csv,
-                        file_name="performance_summary.csv",
-                        mime="text/csv",
-                        use_container_width=True
-                    )
-            else:
-                st.info("No data available for export with current filters")
+    with st.sidebar:
+        st.markdown('<div class="sidebar-header">⚙️ Dashboard Controls</div>', unsafe_allow_html=True)
         
-        except Exception as e:
-            st.error(f"Error processing file: {str(e)}")
-            st.info("Please make sure you're uploading the correct Excel file format with a 'RAWD' sheet")
+        # File upload
+        uploaded_file = st.file_uploader(
+            "📤 Upload Production Data", 
+            type=['xlsx'],
+            help="Upload your PRODUCTION ALL AREA 2025.xlsx file"
+        )
+        
+        if uploaded_file is not None:
+            try:
+                df = pd.read_excel(uploaded_file, sheet_name='RAWD')
+                analyzer = ProductionAnalyzer(df)
+                
+                # Get available months
+                available_months = sorted(analyzer.df_clean['Periode'].unique())
+                
+                # Working days setting
+                st.markdown("---")
+                st.markdown('<div class="sidebar-header">📅 Filter Settings</div>', unsafe_allow_html=True)
+                
+                working_days = st.slider(
+                    "Working Days per Month",
+                    min_value=20,
+                    max_value=31,
+                    value=26,
+                    help="Number of working days for daily average calculation"
+                )
+                
+                # Month filter
+                selected_months = st.multiselect(
+                    "Select Months to Analyze:",
+                    options=['All'] + available_months,
+                    default=['All'],
+                    help="Choose specific months for analysis"
+                )
+                
+                if 'All' in selected_months:
+                    selected_months = available_months
+                
+                # Performance threshold
+                performance_threshold = st.slider(
+                    "Performance Alert Threshold (%)",
+                    min_value=50,
+                    max_value=90,
+                    value=75,
+                    help="Plants below this percentage will be flagged"
+                )
+                
+                # Filter data
+                df_filtered = analyzer.filter_by_month(selected_months)
+                
+                # Summary metrics
+                metrics = analyzer.get_summary_metrics(df_filtered, working_days)
+                
+                # Sidebar metrics
+                st.markdown("---")
+                st.markdown('<div class="sidebar-header">📊 Quick Stats</div>', unsafe_allow_html=True)
+                
+                st.metric("Plants", metrics['total_plants'])
+                st.metric("Areas", metrics['total_areas'])
+                st.metric("Total Volume", f"{metrics['total_volume']:,.0f}")
+                st.metric("Achievement", f"{metrics['overall_achievement']:.1f}%")
+                
+                # Performance distribution
+                perf_dist = analyzer.get_performance_distribution(df_filtered)
+                st.markdown("---")
+                st.markdown('<div class="sidebar-header">🎯 Performance Overview</div>', unsafe_allow_html=True)
+                
+                for status, count in perf_dist.items():
+                    status_color = {
+                        'Excellent': 'status-excellent',
+                        'Good': 'status-good', 
+                        'Warning': 'status-warning',
+                        'Critical': 'status-critical'
+                    }.get(status, 'status-warning')
+                    
+                    st.markdown(f'<span class="{status_color}">{status}: {count} plants</span>', unsafe_allow_html=True)
+                
+                return analyzer, df_filtered, metrics, working_days, selected_months, performance_threshold
+                
+            except Exception as e:
+                st.error(f"Error loading file: {str(e)}")
+                return None, None, None, None, None, None
+        else:
+            st.info("Please upload an Excel file to begin analysis")
+            return None, None, None, None, None, None
+
+    # Main Content
+    if uploaded_file is not None and analyzer is not None:
+        # Executive Summary Section
+        st.markdown('<div class="sub-header">📈 Executive Summary</div>', unsafe_allow_html=True)
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.markdown(create_metric_card(
+                "Total Production Volume", 
+                f"{metrics['total_volume']:,.0f}",
+                f"Target: {metrics['total_target']:,.0f}"
+            ), unsafe_allow_html=True)
+        
+        with col2:
+            achievement_color = "inverse" if metrics['overall_achievement'] < 100 else "normal"
+            st.markdown(create_metric_card(
+                "Overall Achievement", 
+                f"{metrics['overall_achievement']:.1f}%",
+                f"{metrics['overall_achievement'] - 100:+.1f}% vs Target",
+                achievement_color
+            ), unsafe_allow_html=True)
+        
+        with col3:
+            st.markdown(create_metric_card(
+                "Average Daily Volume", 
+                f"{metrics['avg_daily_volume']:,.1f}",
+                f"Based on {working_days} days"
+            ), unsafe_allow_html=True)
+        
+        with col4:
+            performance_color = "normal" if metrics['performance_score'] >= 80 else "inverse"
+            st.markdown(create_metric_card(
+                "Performance Score", 
+                f"{metrics['performance_score']:.1f}%",
+                "Average plant achievement",
+                performance_color
+            ), unsafe_allow_html=True)
+        
+        # Performance Charts Section
+        st.markdown('<div class="sub-header">📊 Performance Analytics</div>', unsafe_allow_html=True)
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # Area performance chart
+            area_perf = analyzer.get_area_performance(df_filtered)
+            if not area_perf.empty:
+                fig_area = px.bar(
+                    area_perf.reset_index(),
+                    x='Area',
+                    y='Achievement %',
+                    title='<b>Achievement Rate by Area</b>',
+                    color='Achievement %',
+                    color_continuous_scale='RdYlGn',
+                    text='Achievement %'
+                )
+                fig_area.update_layout(
+                    height=400,
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    font=dict(color="#2c3e50")
+                )
+                fig_area.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
+                st.plotly_chart(fig_area, use_container_width=True)
+        
+        with col2:
+            # Performance distribution pie chart
+            perf_dist = analyzer.get_performance_distribution(df_filtered)
+            if not perf_dist.empty:
+                colors = {'Excellent': '#2ecc71', 'Good': '#3498db', 'Warning': '#f39c12', 'Critical': '#e74c3c'}
+                fig_pie = px.pie(
+                    values=perf_dist.values,
+                    names=perf_dist.index,
+                    title='<b>Performance Distribution</b>',
+                    color=perf_dist.index,
+                    color_discrete_map=colors
+                )
+                fig_pie.update_layout(
+                    height=400,
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    font=dict(color="#2c3e50"),
+                    showlegend=True
+                )
+                st.plotly_chart(fig_pie, use_container_width=True)
+        
+        # Plant Performance Section
+        st.markdown('<div class="sub-header">🏭 Plant Performance Analysis</div>', unsafe_allow_html=True)
+        
+        tab1, tab2, tab3 = st.tabs(["🏆 Top Performers", "⚠️ Needs Attention", "📋 All Plants"])
+        
+        with tab1:
+            top_performers = analyzer.get_top_performers(df_filtered, 15)
+            if not top_performers.empty:
+                # Add progress bars for visual effect
+                display_df = top_performers.copy()
+                st.dataframe(
+                    display_df.style.format({
+                        'Mtd Vol': '{:,.0f}',
+                        'Ann Fm Target': '{:,.0f}',
+                        'Achievement %': '{:.1f}%'
+                    }).applymap(lambda x: f"background-color: #2ecc71; color: white" if x == 'Excellent' else 
+                               f"background-color: #3498db; color: white" if x == 'Good' else 
+                               f"background-color: #f39c12; color: white" if x == 'Warning' else 
+                               f"background-color: #e74c3c; color: white" if x == 'Critical' else '', 
+                               subset=['Performance Status']),
+                    use_container_width=True,
+                    height=400
+                )
+        
+        with tab2:
+            underperformers = analyzer.get_underperformers(df_filtered, performance_threshold)
+            if not underperformers.empty:
+                st.dataframe(
+                    underperformers.style.format({
+                        'Mtd Vol': '{:,.0f}',
+                        'Ann Fm Target': '{:,.0f}',
+                        'Achievement %': '{:.1f}%'
+                    }).applymap(lambda x: f"background-color: #e74c3c; color: white" if x == 'Critical' else 
+                               f"background-color: #f39c12; color: white" if x == 'Warning' else '', 
+                               subset=['Performance Status']),
+                    use_container_width=True,
+                    height=400
+                )
+            else:
+                st.success(f"🎉 All plants are performing above {performance_threshold}%!")
+        
+        with tab3:
+            # Detailed data view
+            st.dataframe(
+                df_filtered.style.format({
+                    'Ann Fm Target': '{:,.0f}',
+                    'Mtd Vol': '{:,.0f}',
+                    'Achievement %': '{:.1f}%',
+                    'Schedule Achievement %': '{:.1f}%'
+                }).applymap(lambda x: f"background-color: #2ecc71; color: white" if x == 'Excellent' else 
+                           f"background-color: #3498db; color: white" if x == 'Good' else 
+                           f"background-color: #f39c12; color: white" if x == 'Warning' else 
+                           f"background-color: #e74c3c; color: white" if x == 'Critical' else '', 
+                           subset=['Performance Status']),
+                use_container_width=True,
+                height=500
+            )
+        
+        # Export Section
+        st.markdown('<div class="sub-header">📥 Export & Reports</div>', unsafe_allow_html=True)
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            if st.button("📊 Download Performance Report", use_container_width=True):
+                csv = df_filtered.to_csv(index=False)
+                st.download_button(
+                    label="⬇️ Download as CSV",
+                    data=csv,
+                    file_name="production_performance_report.csv",
+                    mime="text/csv",
+                    use_container_width=True
+                )
+        
+        with col2:
+            if st.button("📈 Download Summary", use_container_width=True):
+                summary_df = analyzer.get_area_performance(df_filtered).reset_index()
+                summary_csv = summary_df.to_csv(index=False)
+                st.download_button(
+                    label="⬇️ Download Summary",
+                    data=summary_csv,
+                    file_name="performance_summary.csv",
+                    mime="text/csv",
+                    use_container_width=True
+                )
+        
+        with col3:
+            if st.button("🔄 Refresh Analysis", use_container_width=True):
+                st.rerun()
     
     else:
         # Welcome screen
-        st.info("👆 Please upload your production Excel file to begin analysis")
+        st.markdown("---")
+        col1, col2 = st.columns([1, 1])
         
-        with st.expander("ℹ️ About this dashboard"):
-            st.write("""
-            This Production Performance Dashboard provides:
+        with col1:
+            st.markdown("""
+            ## 🚀 Welcome to Production Dashboard
             
-            - **Accurate Daily Calculations**: Corrected average daily volume based on working days
-            - **Monthly Filter**: Analyze data by specific months
-            - **Executive Summary**: Key metrics and overall performance
-            - **Performance Overview**: Visual analysis by area and time period
-            - **Plant Analysis**: Identification of top performers and plants needing attention
-            - **Detailed Reports**: Comprehensive area and monthly performance data
+            **Get started in 3 easy steps:**
             
-            **Calculation Method:**
-            - Avg Vol.Day = Mtd Vol / Working Days per Month
-            - Default: 22 working days (configurable in sidebar)
+            1. **Upload** your production Excel file
+            2. **Configure** analysis settings in sidebar  
+            3. **Explore** interactive insights and reports
+            
+            ### 📋 Supported Features:
+            - ✅ Monthly performance analysis
+            - ✅ Area-wise comparison
+            - ✅ Plant performance ranking
+            - ✅ Achievement tracking
+            - ✅ Export capabilities
+            """)
+        
+        with col2:
+            st.markdown("""
+            ## 📊 Sample Data Structure
+            
+            Your Excel file should contain:
+            
+            ```csv
+            Periode,Area,Plant Name,Ann Fm Target,Mtd Vol,...
+            August,West1,Ciujung,1613,1734.5,...
+            August,West1,Cilegon,1670,1327.5,...
+            September,West1,Ciujung,1700,1944,...
+            ```
+            
+            ### 🎯 Key Metrics Tracked:
+            - Production Volume vs Target
+            - Achievement Percentage
+            - Performance Status
+            - Area-wise Analysis
             """)
 
 if __name__ == "__main__":
