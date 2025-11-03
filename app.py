@@ -51,7 +51,7 @@ class ProductionAnalyzer:
         # PERBAIKAN: Hitung ulang Avg Vol.Day yang benar
         # Asumsi: 22 hari kerja per bulan (bisa disesuaikan)
         working_days_per_month = 22
-        df['Avg Vol.Day Corrected'] = (df['Mtd Vol'] / working_days_per_month).round(1)
+        df['Avg Vol.Day'] = (df['Mtd Vol'] / working_days_per_month).round(1)
         
         # Calculate performance metrics
         df['Achievement %'] = (df['Mtd Vol'] / df['Ann Fm Target'] * 100).round(2)
@@ -90,7 +90,7 @@ class ProductionAnalyzer:
             'total_volume': total_volume,
             'total_target': total_target,
             'overall_achievement': overall_achievement,
-            'avg_daily_volume': df_filtered['Avg Vol.Day Corrected'].mean()
+            'avg_daily_volume': df_filtered['Avg Vol.Day'].mean()
         }
     
     def get_area_performance(self, df_filtered):
@@ -110,14 +110,14 @@ class ProductionAnalyzer:
     def get_top_performers(self, df_filtered, n=10):
         """Get top performing plants from filtered data"""
         return df_filtered.nlargest(n, 'Achievement %')[
-            ['Plant Name', 'Area', 'Periode', 'Mtd Vol', 'Ann Fm Target', 'Achievement %', 'Performance Category', 'Avg Vol.Day Corrected']
+            ['Plant Name', 'Area', 'Periode', 'Mtd Vol', 'Ann Fm Target', 'Achievement %', 'Performance Category', 'Avg Vol.Day']
         ]
     
     def get_underperformers(self, df_filtered, threshold=80):
         """Get underperforming plants from filtered data"""
         underperformers = df_filtered[df_filtered['Achievement %'] < threshold]
         return underperformers.nsmallest(10, 'Achievement %')[
-            ['Plant Name', 'Area', 'Periode', 'Mtd Vol', 'Ann Fm Target', 'Achievement %', 'Performance Category', 'Avg Vol.Day Corrected']
+            ['Plant Name', 'Area', 'Periode', 'Mtd Vol', 'Ann Fm Target', 'Achievement %', 'Performance Category', 'Avg Vol.Day']
         ]
     
     def get_monthly_trends(self, df_filtered):
@@ -126,7 +126,7 @@ class ProductionAnalyzer:
             'Mtd Vol': 'sum',
             'Ann Fm Target': 'sum',
             'Plant Name': 'count',
-            'Avg Vol.Day Corrected': 'mean'
+            'Avg Vol.Day': 'mean'
         }).round(2)
         
         monthly['Achievement %'] = (monthly['Mtd Vol'] / monthly['Ann Fm Target'] * 100).round(2)
@@ -174,8 +174,8 @@ def main():
                 if col in df_temp.columns:
                     df_temp[col] = pd.to_numeric(df_temp[col], errors='coerce')
             
-            # Calculate corrected average with user-defined working days
-            df_temp['Avg Vol.Day Corrected'] = (df_temp['Mtd Vol'] / working_days).round(1)
+            # Calculate  average with user-defined working days
+            df_temp['Avg Vol.Day '] = (df_temp['Mtd Vol'] / working_days).round(1)
             
             analyzer = ProductionAnalyzer(df)
             
@@ -244,15 +244,15 @@ def main():
             col1, col2, col3 = st.columns(3)
             
             with col1:
-                avg_daily_volume = df_filtered['Avg Vol.Day Corrected'].mean()
+                avg_daily_volume = df_filtered['Avg Vol.Day '].mean()
                 st.metric("Average Daily Volume", f"{avg_daily_volume:,.1f}")
             
             with col2:
-                total_daily_capacity = df_filtered['Avg Vol.Day Corrected'].sum()
+                total_daily_capacity = df_filtered['Avg Vol.Day '].sum()
                 st.metric("Total Daily Capacity", f"{total_daily_capacity:,.1f}")
             
             with col3:
-                daily_efficiency = (df_filtered['Mtd Vol'].sum() / (df_filtered['Avg Vol.Day Corrected'].sum() * working_days) * 100) if df_filtered['Avg Vol.Day Corrected'].sum() > 0 else 0
+                daily_efficiency = (df_filtered['Mtd Vol'].sum() / (df_filtered['Avg Vol.Day '].sum() * working_days) * 100) if df_filtered['Avg Vol.Day '].sum() > 0 else 0
                 st.metric("Daily Efficiency", f"{daily_efficiency:.1f}%")
             
             # Performance Overview
@@ -279,14 +279,14 @@ def main():
             
             with col2:
                 # Daily volume by area
-                daily_by_area = df_filtered.groupby('Area')['Avg Vol.Day Corrected'].mean().reset_index()
+                daily_by_area = df_filtered.groupby('Area')['Avg Vol.Day '].mean().reset_index()
                 if not daily_by_area.empty:
                     fig_daily = px.bar(
                         daily_by_area,
                         x='Area',
-                        y='Avg Vol.Day Corrected',
+                        y='Avg Vol.Day ',
                         title='Average Daily Volume by Area',
-                        color='Avg Vol.Day Corrected',
+                        color='Avg Vol.Day ',
                         color_continuous_scale='Blues'
                     )
                     fig_daily.update_layout(height=400)
@@ -308,7 +308,7 @@ def main():
                             'Mtd Vol': '{:,.0f}',
                             'Ann Fm Target': '{:,.0f}',
                             'Achievement %': '{:.1f}%',
-                            'Avg Vol.Day Corrected': '{:.1f}'
+                            'Avg Vol.Day ': '{:.1f}'
                         }),
                         use_container_width=True
                     )
@@ -324,7 +324,7 @@ def main():
                             'Mtd Vol': '{:,.0f}',
                             'Ann Fm Target': '{:,.0f}',
                             'Achievement %': '{:.1f}%',
-                            'Avg Vol.Day Corrected': '{:.1f}'
+                            'Avg Vol.Day ': '{:.1f}'
                         }),
                         use_container_width=True
                     )
@@ -360,7 +360,7 @@ def main():
                             'Mtd Vol': '{:,.0f}',
                             'Ann Fm Target': '{:,.0f}',
                             'Achievement %': '{:.1f}%',
-                            'Avg Vol.Day Corrected': '{:.1f}'
+                            'Avg Vol.Day ': '{:.1f}'
                         }),
                         use_container_width=True
                     )
@@ -369,12 +369,12 @@ def main():
             
             with tab3:
                 st.subheader("Daily Performance Analysis")
-                daily_analysis = df_filtered[['Plant Name', 'Area', 'Periode', 'Mtd Vol', 'Avg Vol.Day Corrected', 'Achievement %']].sort_values('Avg Vol.Day Corrected', ascending=False)
+                daily_analysis = df_filtered[['Plant Name', 'Area', 'Periode', 'Mtd Vol', 'Avg Vol.Day ', 'Achievement %']].sort_values('Avg Vol.Day ', ascending=False)
                 if not daily_analysis.empty:
                     st.dataframe(
                         daily_analysis.style.format({
                             'Mtd Vol': '{:,.0f}',
-                            'Avg Vol.Day Corrected': '{:.1f}',
+                            'Avg Vol.Day ': '{:.1f}',
                             'Achievement %': '{:.1f}%'
                         }),
                         use_container_width=True
@@ -383,7 +383,7 @@ def main():
                     # Daily volume distribution
                     fig_daily_dist = px.histogram(
                         df_filtered,
-                        x='Avg Vol.Day Corrected',
+                        x='Avg Vol.Day ',
                         title='Distribution of Daily Volumes',
                         nbins=20,
                         color_discrete_sequence=['#3498db']
@@ -398,7 +398,7 @@ def main():
                 if not df_filtered.empty:
                     # Tampilkan kolom yang relevan saja untuk menghindari overload
                     display_columns = ['Periode', 'Area', 'Plant Name', 'Ann Fm Target', 'Mtd Vol', 
-                                     'Avg Vol.Day Corrected', 'Rmc Schedule', 'Achievement %', 
+                                     'Avg Vol.Day ', 'Rmc Schedule', 'Achievement %', 
                                      'Schedule Achievement %', 'Performance Category']
                     
                     available_columns = [col for col in display_columns if col in df_filtered.columns]
@@ -407,7 +407,7 @@ def main():
                         df_filtered[available_columns].style.format({
                             'Ann Fm Target': '{:,.0f}',
                             'Mtd Vol': '{:,.0f}',
-                            'Avg Vol.Day Corrected': '{:.1f}',
+                            'Avg Vol.Day ': '{:.1f}',
                             'Rmc Schedule': '{:,.0f}',
                             'Achievement %': '{:.1f}%',
                             'Schedule Achievement %': '{:.1f}%'
@@ -460,7 +460,7 @@ def main():
             st.write("""
             This Production Performance Dashboard provides:
             
-            - **Accurate Daily Calculations**: Corrected average daily volume based on working days
+            - **Accurate Daily Calculations**:  average daily volume based on working days
             - **Monthly Filter**: Analyze data by specific months
             - **Executive Summary**: Key metrics and overall performance
             - **Performance Overview**: Visual analysis by area and time period
