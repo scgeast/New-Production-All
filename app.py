@@ -77,27 +77,45 @@ class ProductionAnalyzer:
         
         self.df_clean = df
     
-    def get_summary_metrics(self):
+    def filter_by_months(self, selected_months):
+        """Filter data by selected months"""
+        if 'All' in selected_months or not selected_months:
+            return self.df_clean
+        else:
+            return self.df_clean[self.df_clean['Periode'].isin(selected_months)]
+    
+    def get_summary_metrics(self, selected_months=None):
         """Get overall summary metrics"""
-        total_volume = self.df_clean['Mtd Vol'].sum()
-        total_target = self.df_clean['Ann Fm Target'].sum()
+        if selected_months:
+            df_filtered = self.filter_by_months(selected_months)
+        else:
+            df_filtered = self.df_clean
+            
+        total_volume = df_filtered['Mtd Vol'].sum()
+        total_target = df_filtered['Ann Fm Target'].sum()
         overall_achievement = (total_volume / total_target * 100) if total_target > 0 else 0
         
         return {
-            'total_plants': self.df_clean['Plant Name'].nunique(),
-            'total_areas': self.df_clean['Area'].nunique(),
-            'total_periods': self.df_clean['Periode'].nunique(),
+            'total_plants': df_filtered['Plant Name'].nunique(),
+            'total_areas': df_filtered['Area'].nunique(),
+            'total_periods': df_filtered['Periode'].nunique(),
             'total_volume': total_volume,
             'total_target': total_target,
             'overall_achievement': overall_achievement,
-            'avg_daily_volume': self.df_clean['Calculated Avg Vol.Day'].mean(),
-            'original_avg_daily_volume': self.df_clean['Avg Vol.Day'].mean(),
-            'working_days': self.working_days
+            'avg_daily_volume': df_filtered['Calculated Avg Vol.Day'].mean(),
+            'original_avg_daily_volume': df_filtered['Avg Vol.Day'].mean(),
+            'working_days': self.working_days,
+            'selected_months': selected_months
         }
     
-    def get_area_performance(self):
+    def get_area_performance(self, selected_months=None):
         """Get performance by area"""
-        area_perf = self.df_clean.groupby('Area').agg({
+        if selected_months:
+            df_filtered = self.filter_by_months(selected_months)
+        else:
+            df_filtered = self.df_clean
+            
+        area_perf = df_filtered.groupby('Area').agg({
             'Mtd Vol': 'sum',
             'Ann Fm Target': 'sum',
             'Achievement %': 'mean',
@@ -111,18 +129,28 @@ class ProductionAnalyzer:
         
         return area_perf
     
-    def get_top_performers(self, n=10):
+    def get_top_performers(self, n=10, selected_months=None):
         """Get top performing plants"""
-        return self.df_clean.nlargest(n, 'Achievement %')[
-            ['Plant Name', 'Area', 'Mtd Vol', 'Ann Fm Target', 'Achievement %', 
+        if selected_months:
+            df_filtered = self.filter_by_months(selected_months)
+        else:
+            df_filtered = self.df_clean
+            
+        return df_filtered.nlargest(n, 'Achievement %')[
+            ['Plant Name', 'Area', 'Periode', 'Mtd Vol', 'Ann Fm Target', 'Achievement %', 
              'Calculated Avg Vol.Day', 'Avg Vol.Day', 'Avg Vol Efficiency', 'Performance Category']
         ]
     
-    def get_underperformers(self, threshold=80):
+    def get_underperformers(self, threshold=80, selected_months=None):
         """Get underperforming plants"""
-        underperformers = self.df_clean[self.df_clean['Achievement %'] < threshold]
+        if selected_months:
+            df_filtered = self.filter_by_months(selected_months)
+        else:
+            df_filtered = self.df_clean
+            
+        underperformers = df_filtered[df_filtered['Achievement %'] < threshold]
         return underperformers.nsmallest(10, 'Achievement %')[
-            ['Plant Name', 'Area', 'Mtd Vol', 'Ann Fm Target', 'Achievement %', 
+            ['Plant Name', 'Area', 'Periode', 'Mtd Vol', 'Ann Fm Target', 'Achievement %', 
              'Calculated Avg Vol.Day', 'Avg Vol.Day', 'Avg Vol Efficiency', 'Performance Category']
         ]
     
@@ -142,9 +170,14 @@ class ProductionAnalyzer:
         
         return monthly
     
-    def get_avg_vol_trends(self):
+    def get_avg_vol_trends(self, selected_months=None):
         """Get detailed average volume trends by period and area"""
-        trends = self.df_clean.groupby(['Periode', 'Area']).agg({
+        if selected_months:
+            df_filtered = self.filter_by_months(selected_months)
+        else:
+            df_filtered = self.df_clean
+            
+        trends = df_filtered.groupby(['Periode', 'Area']).agg({
             'Calculated Avg Vol.Day': 'mean',
             'Avg Vol.Day': 'mean',
             'Mtd Vol': 'sum',
@@ -169,36 +202,60 @@ def main():
         help="Upload your PRODUCTION ALL AREA 2025.xlsx file"
     )
     
-    # Performance threshold
-    performance_threshold = st.sidebar.slider(
-        "Underperformance Threshold (%)",
-        min_value=50,
-        max_value=90,
-        value=80,
-        help="Plants below this achievement percentage will be flagged"
-    )
-    
-    # Working days assumption - BAGIAN YANG DAPAT DIKONFIGURASI
-    working_days = st.sidebar.number_input(
-        "Average Working Days per Month",
-        min_value=1,
-        max_value=31,
-        value=22,
-        help="Number of working days used for Avg Vol.Day calculation"
-    )
+    # Initialize selected_months
+    selected_months = []
     
     if uploaded_file is not None:
         try:
-            # Load data
+            # Load data first to get available months
             df = pd.read_excel(uploaded_file, sheet_name='RAWD')
+            available_months = sorted(df['Periode'].unique())
+            
+            # Month filter - BAGIAN FILTER BULAN
+            st.sidebar.subheader("📅 Month Filter")
+            selected_months = st.sidebar.multiselect(
+                "Select Months to Analyze",
+                options=['All'] + list(available_months),
+                default=['All'],
+                help="Select one month, multiple months, or 'All' for all months"
+            )
+            
+            # Handle 'All' selection
+            if 'All' in selected_months:
+                selected_months = list(available_months)
+            
+            # Performance threshold
+            performance_threshold = st.sidebar.slider(
+                "Underperformance Threshold (%)",
+                min_value=50,
+                max_value=90,
+                value=80,
+                help="Plants below this achievement percentage will be flagged"
+            )
+            
+            # Working days assumption
+            working_days = st.sidebar.number_input(
+                "Average Working Days per Month",
+                min_value=1,
+                max_value=31,
+                value=22,
+                help="Number of working days used for Avg Vol.Day calculation"
+            )
+            
+            # Initialize analyzer
             analyzer = ProductionAnalyzer(df, working_days)
+            
+            # Display filter info
+            if selected_months:
+                months_display = ", ".join(selected_months) if len(selected_months) <= 3 else f"{len(selected_months)} months selected"
+                st.info(f"📊 Analyzing data for: **{months_display}**")
             
             # Display success message
             st.success(f"✅ Data loaded successfully! {len(df)} records found. Using {working_days} working days for calculations.")
             
             # Summary metrics
             st.header("📊 Executive Summary")
-            metrics = analyzer.get_summary_metrics()
+            metrics = analyzer.get_summary_metrics(selected_months)
             
             col1, col2, col3, col4 = st.columns(4)
             
@@ -255,12 +312,12 @@ def main():
             
             with col1:
                 # Area performance chart
-                area_perf = analyzer.get_area_performance()
+                area_perf = analyzer.get_area_performance(selected_months)
                 fig_area = px.bar(
                     area_perf.reset_index(),
                     x='Area',
                     y='Achievement %',
-                    title='Achievement Rate by Area',
+                    title=f'Achievement Rate by Area ({len(selected_months)} months)',
                     color='Achievement %',
                     color_continuous_scale='RdYlGn'
                 )
@@ -268,7 +325,7 @@ def main():
                 st.plotly_chart(fig_area, use_container_width=True)
             
             with col2:
-                # Monthly trends
+                # Monthly trends (always show all months for trend analysis)
                 monthly_trends = analyzer.get_monthly_trends()
                 fig_trend = go.Figure()
                 fig_trend.add_trace(go.Scatter(
@@ -285,8 +342,21 @@ def main():
                     name='Target Volume',
                     line=dict(color='#ff7f0e', dash='dash')
                 ))
+                
+                # Highlight selected months if not all are selected
+                if selected_months and len(selected_months) < len(available_months):
+                    for month in selected_months:
+                        if month in monthly_trends.index:
+                            fig_trend.add_vrect(
+                                x0=month, x1=month,
+                                fillcolor="green", opacity=0.1,
+                                layer="below", line_width=0,
+                                annotation_text=f"Selected: {month}",
+                                annotation_position="top left"
+                            )
+                
                 fig_trend.update_layout(
-                    title='Monthly Production Trends',
+                    title='Monthly Production Trends (All Months)',
                     height=400,
                     xaxis_title='Period',
                     yaxis_title='Volume'
@@ -300,7 +370,7 @@ def main():
             
             with col1:
                 # Avg Vol.Day comparison by area
-                area_avg_vol = analyzer.get_area_performance().reset_index()
+                area_avg_vol = analyzer.get_area_performance(selected_months).reset_index()
                 fig_avg_vol = go.Figure()
                 fig_avg_vol.add_trace(go.Bar(
                     name='Calculated Avg Vol/Day',
@@ -315,7 +385,7 @@ def main():
                     marker_color='#ff7f0e'
                 ))
                 fig_avg_vol.update_layout(
-                    title=f'Average Volume per Day Comparison by Area (Using {working_days} Working Days)',
+                    title=f'Average Volume per Day Comparison by Area ({len(selected_months)} months)',
                     height=400,
                     xaxis_title='Area',
                     yaxis_title='Average Volume per Day',
@@ -324,30 +394,35 @@ def main():
                 st.plotly_chart(fig_avg_vol, use_container_width=True)
             
             with col2:
-                # Monthly Avg Vol.Day trends
-                monthly_avg = analyzer.get_monthly_trends()
-                fig_monthly_avg = go.Figure()
-                fig_monthly_avg.add_trace(go.Scatter(
-                    x=monthly_avg.index,
-                    y=monthly_avg['Calculated Avg Vol.Day'],
-                    mode='lines+markers',
-                    name='Calculated Avg Vol/Day',
-                    line=dict(color='#1f77b4')
-                ))
-                fig_monthly_avg.add_trace(go.Scatter(
-                    x=monthly_avg.index,
-                    y=monthly_avg['Avg Vol.Day'],
-                    mode='lines+markers',
-                    name='Original Avg Vol/Day',
-                    line=dict(color='#ff7f0e', dash='dash')
-                ))
-                fig_monthly_avg.update_layout(
-                    title='Monthly Average Volume per Day Trends',
-                    height=400,
-                    xaxis_title='Period',
-                    yaxis_title='Average Volume per Day'
-                )
-                st.plotly_chart(fig_monthly_avg, use_container_width=True)
+                # Monthly Avg Vol.Day trends (filtered by selection)
+                if selected_months:
+                    monthly_avg_filtered = analyzer.get_avg_vol_trends(selected_months).groupby('Periode').agg({
+                        'Calculated Avg Vol.Day': 'mean',
+                        'Avg Vol.Day': 'mean'
+                    }).round(2)
+                    
+                    fig_monthly_avg = go.Figure()
+                    fig_monthly_avg.add_trace(go.Scatter(
+                        x=monthly_avg_filtered.index,
+                        y=monthly_avg_filtered['Calculated Avg Vol.Day'],
+                        mode='lines+markers',
+                        name='Calculated Avg Vol/Day',
+                        line=dict(color='#1f77b4')
+                    ))
+                    fig_monthly_avg.add_trace(go.Scatter(
+                        x=monthly_avg_filtered.index,
+                        y=monthly_avg_filtered['Avg Vol.Day'],
+                        mode='lines+markers',
+                        name='Original Avg Vol/Day',
+                        line=dict(color='#ff7f0e', dash='dash')
+                    ))
+                    fig_monthly_avg.update_layout(
+                        title=f'Average Volume per Day Trends ({len(selected_months)} months)',
+                        height=400,
+                        xaxis_title='Period',
+                        yaxis_title='Average Volume per Day'
+                    )
+                    st.plotly_chart(fig_monthly_avg, use_container_width=True)
             
             # Plant Performance Analysis
             st.header("🏭 Plant Performance Analysis")
@@ -356,7 +431,7 @@ def main():
             
             with col1:
                 st.subheader("🏆 Top Performers")
-                top_performers = analyzer.get_top_performers(10)
+                top_performers = analyzer.get_top_performers(10, selected_months)
                 st.dataframe(
                     top_performers.style.format({
                         'Mtd Vol': '{:,.0f}',
@@ -371,7 +446,7 @@ def main():
             
             with col2:
                 st.subheader("⚠️ Plants Needing Attention")
-                underperformers = analyzer.get_underperformers(performance_threshold)
+                underperformers = analyzer.get_underperformers(performance_threshold, selected_months)
                 if not underperformers.empty:
                     st.dataframe(
                         underperformers.style.format({
@@ -394,7 +469,7 @@ def main():
             
             with tab1:
                 st.subheader("Area Performance Details")
-                area_perf_detailed = analyzer.get_area_performance()
+                area_perf_detailed = analyzer.get_area_performance(selected_months)
                 st.dataframe(
                     area_perf_detailed.style.format({
                         'Mtd Vol': '{:,.0f}',
@@ -423,7 +498,7 @@ def main():
             
             with tab3:
                 st.subheader("Average Volume Trends by Period and Area")
-                avg_vol_trends = analyzer.get_avg_vol_trends()
+                avg_vol_trends = analyzer.get_avg_vol_trends(selected_months)
                 st.dataframe(
                     avg_vol_trends.style.format({
                         'Calculated Avg Vol.Day': '{:.1f}',
@@ -435,28 +510,34 @@ def main():
                 )
                 
                 # Heatmap of Avg Vol Efficiency by Area and Period
-                st.subheader("Avg Vol Efficiency Heatmap")
-                heatmap_data = avg_vol_trends.pivot_table(
-                    index='Area', 
-                    columns='Periode', 
-                    values='Avg Vol Variance %',
-                    aggfunc='mean'
-                ).round(1)
-                
-                if not heatmap_data.empty:
-                    fig_heatmap = px.imshow(
-                        heatmap_data,
-                        title='Avg Volume Variance % by Area and Period',
-                        color_continuous_scale='RdYlGn',
-                        aspect='auto'
-                    )
-                    fig_heatmap.update_layout(height=400)
-                    st.plotly_chart(fig_heatmap, use_container_width=True)
+                if not avg_vol_trends.empty:
+                    st.subheader("Avg Vol Efficiency Heatmap")
+                    heatmap_data = avg_vol_trends.pivot_table(
+                        index='Area', 
+                        columns='Periode', 
+                        values='Avg Vol Variance %',
+                        aggfunc='mean'
+                    ).round(1)
+                    
+                    if not heatmap_data.empty:
+                        fig_heatmap = px.imshow(
+                            heatmap_data,
+                            title=f'Avg Volume Variance % by Area and Period ({len(selected_months)} months)',
+                            color_continuous_scale='RdYlGn',
+                            aspect='auto'
+                        )
+                        fig_heatmap.update_layout(height=400)
+                        st.plotly_chart(fig_heatmap, use_container_width=True)
             
             with tab4:
                 st.subheader("Raw Production Data")
+                if selected_months:
+                    df_filtered = analyzer.filter_by_months(selected_months)
+                else:
+                    df_filtered = analyzer.df_clean
+                    
                 st.dataframe(
-                    analyzer.df_clean.style.format({
+                    df_filtered.style.format({
                         'Ann Fm Target': '{:,.0f}',
                         'Mtd Vol': '{:,.0f}',
                         'Avg Vol.Day': '{:.1f}',
@@ -476,11 +557,16 @@ def main():
             
             with col1:
                 # Performance histogram
+                if selected_months:
+                    df_filtered = analyzer.filter_by_months(selected_months)
+                else:
+                    df_filtered = analyzer.df_clean
+                    
                 fig_hist = px.histogram(
-                    analyzer.df_clean,
+                    df_filtered,
                     x='Achievement %',
                     nbins=20,
-                    title='Distribution of Achievement Rates',
+                    title=f'Distribution of Achievement Rates ({len(selected_months)} months)',
                     color_discrete_sequence=['#1f77b4']
                 )
                 fig_hist.add_vline(x=performance_threshold, line_dash="dash", line_color="red",
@@ -490,11 +576,16 @@ def main():
             
             with col2:
                 # Performance categories
-                performance_counts = analyzer.df_clean['Performance Category'].value_counts()
+                if selected_months:
+                    df_filtered = analyzer.filter_by_months(selected_months)
+                else:
+                    df_filtered = analyzer.df_clean
+                    
+                performance_counts = df_filtered['Performance Category'].value_counts()
                 fig_pie = px.pie(
                     values=performance_counts.values,
                     names=performance_counts.index,
-                    title='Plants by Performance Category',
+                    title=f'Plants by Performance Category ({len(selected_months)} months)',
                     color=performance_counts.index,
                     color_discrete_map={
                         'Needs Attention': '#e74c3c',
@@ -512,7 +603,12 @@ def main():
             
             with col1:
                 # Download processed data
-                csv = analyzer.df_clean.to_csv(index=False)
+                if selected_months:
+                    df_filtered = analyzer.filter_by_months(selected_months)
+                else:
+                    df_filtered = analyzer.df_clean
+                    
+                csv = df_filtered.to_csv(index=False)
                 st.download_button(
                     label="Download Processed Data as CSV",
                     data=csv,
@@ -523,7 +619,7 @@ def main():
             
             with col2:
                 # Download performance summary
-                summary_df = analyzer.get_area_performance().reset_index()
+                summary_df = analyzer.get_area_performance(selected_months).reset_index()
                 summary_csv = summary_df.to_csv(index=False)
                 st.download_button(
                     label="Download Performance Summary",
@@ -535,7 +631,7 @@ def main():
             
             with col3:
                 # Download avg vol trends
-                avg_vol_df = analyzer.get_avg_vol_trends()
+                avg_vol_df = analyzer.get_avg_vol_trends(selected_months)
                 avg_vol_csv = avg_vol_df.to_csv(index=False)
                 st.download_button(
                     label="Download Avg Vol Trends",
@@ -565,6 +661,7 @@ def main():
             - **Performance Distribution**: Statistical analysis of achievement rates
             
             **New Features:**
+            - ✅ Month Filter: Select single month, multiple months, or all months
             - ✅ Configurable working days for Avg Vol.Day calculation
             - ✅ Corrected Avg Vol.Day calculation based on working days
             - ✅ Average Volume trends by area and period
