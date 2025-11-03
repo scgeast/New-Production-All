@@ -1,4 +1,4 @@
-dengan script ini :# streamlit_app.py - Dengan perbaikan Avg Vol.Day
+# streamlit_app.py - Dengan perbaikan Avg Vol.Day
 import streamlit as st
 import pandas as pd
 import plotly.express as px
